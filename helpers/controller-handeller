@@ -1,0 +1,23 @@
+import  Boom  from "@hapi/boom";
+
+
+export const controllerHandler = (promise, params) => async(req, res, next) => {
+    const boundParams = params ? params(req, res, next) : [];
+    try {
+        // console.log("params========>",params)
+        // console.log("main controller======>",req.body,req.user)
+        const result = await promise(...boundParams);
+        return res.json(result || {
+            message: 'OK',
+        });
+    } catch (error) {
+        console.log("main controller",error.message)
+        if (!error.isBoom) {
+            return next(Boom.badImplementation(error.message));
+        }
+        if (error.isBoom && error.data) {
+            error.output.payload.data = error.data;
+        }
+        next(error);
+    }
+};
