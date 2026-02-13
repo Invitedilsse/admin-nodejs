@@ -69,7 +69,7 @@ const offset = (pageN - 1) * limit;
 
 
 export const functionContactlist = async (query, loggedUser) => {
-  const { limit = 20, page = 1, functionId, oid } = query;
+  const { limit = 20, page = 1, functionId, oid,search } = query;
 
   const limitN = Number(limit) || 20;
   const pageN = Number(page) || 1;
@@ -106,6 +106,12 @@ export const functionContactlist = async (query, loggedUser) => {
       JOIN LATERAL unnest(mc.contact_id) AS contact_id(id) ON true
       JOIN contacts c ON c.id = contact_id.id
       WHERE mc.oid = ANY($1::uuid[])
+        and (
+        $4::text IS NULL
+        OR $4::text = ''
+        OR c.name ILIKE '%' || $4::text || '%'
+        OR c.mobile ILIKE '%' || $4::text || '%'
+        )
       ORDER BY c.created_at DESC
       LIMIT $2 OFFSET $3;
     `;
@@ -114,6 +120,7 @@ export const functionContactlist = async (query, loggedUser) => {
       filterOid,
       limitN,
       offset,
+      search
     ]);
 
       const callerMappedQuery = `
@@ -157,12 +164,18 @@ export const functionContactlist = async (query, loggedUser) => {
       FROM mappedContact mc
       JOIN LATERAL unnest(mc.contact_id) AS contact_id(id) ON true
       JOIN contacts c ON c.id = contact_id.id
-      WHERE mc.oid = ANY($1::uuid[]);
+      WHERE mc.oid = ANY($1::uuid[])
+       and (
+        $2::text IS NULL
+        OR $2::text = ''
+        OR c.name ILIKE '%' || $2::text || '%'
+        OR c.mobile ILIKE '%' || $2::text || '%'
+        );
     `;
 
     const {
       rows: [{ total_count }],
-    } = await existClient.query(countQuery, [filterOid]);
+    } = await existClient.query(countQuery, [filterOid,search]);
 
     // ------------------------------
     // 5. Return response

@@ -444,13 +444,14 @@ export const dashboardlist = async (loggedUser) => {
 //   const userId = loggedUser.id
   try {
 
-     const [callerCount,functionCount] = await Promise.all([
+     const [callerCount,functionCount,offlineFunction] = await Promise.all([
       totalCallers(),
-      totalFunction()
+      totalFunction(),
+      totalOfflineFunction()
      ])
     return {
       message: "User List Data",
-      data: {callerCount,functionCount},
+      data: {callerCount,functionCount,offlineFunction},
     };
   } catch (err) {
     throw Boom.conflict(err.message);
@@ -483,6 +484,24 @@ const totalFunction = async (loggedUser) => {
 
     const { rows: targetUser } = await client.query(
       `SELECT count(*) FROM function`,
+      []
+    );
+    return {
+      data: targetUser[0].count,
+    };
+  } catch (err) {
+    throw Boom.conflict(err.message);
+  } finally {
+    client.release();
+  }
+};
+
+const totalOfflineFunction = async (loggedUser) => {
+  const client = await existingPool.connect();
+  try {
+
+    const { rows: targetUser } = await client.query(
+      `SELECT count(*) FROM offline_function`,
       []
     );
     return {
