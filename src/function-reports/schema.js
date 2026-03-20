@@ -92,14 +92,34 @@ export const uploadFileSchema = {
   }),
 };
 
-export const callerHistorySchema = {
+export const userlistAllschema = {
   query: joi.object().keys({
-    functionId: joi.string().uuid().required(),
-    callerID: joi.string().uuid().required(),
     "page":joi.string().required(),
     "limit":joi.string().required(),
     "search":joi.string().allow('').optional(),
-    "filterbyoid":joi.string().uuid().allow('').optional(),
-    excel:joi.string().valid('true','false').optional()
+    "type":joi.string().allow('').optional(),
+    "start_date":joi.string().allow('').optional(),
+     "end_date":joi.string().allow('').optional(),
+     type:joi.string().allow('online','offline','')
+  }),
+};
+
+export const userlistschema = {
+  query: joi.object().keys({
+    "page":joi.string().required(),
+    "limit":joi.string().required(),
+    "search":joi.string().allow('').optional(),
+    excel:joi.string().valid('true','false').optional(),
+    sd: joi.string().allow(''),
+    ed: joi.string().allow(''),
+  }),
+};
+
+export const userDetailschema = {
+  query: joi.object().keys({
+    "page":joi.string().required(),
+    "limit":joi.string().required(),
+    "search":joi.string().allow('').optional(),
+    userId:joi.string().uuid().required()
   }),
 };
