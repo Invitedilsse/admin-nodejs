@@ -12,6 +12,7 @@ import { adminDb } from './config/adminDb.js';
 import { createOtpTable } from './src/otp/index.js';
 import { createmappedContactcallersTable } from './src/assign-task/index.js';
 import { createCallManagements } from './src/call-managements/index.js';
+import { createadvertismentTable } from './src/ad/index.js';
 dotenv.config();
 const app = express();
 const __filename = fileURLToPath(import.meta.url);
@@ -90,6 +91,8 @@ createUsersTable()
 createOtpTable()
 createmappedContactcallersTable()
 createCallManagements()
+createadvertismentTable()
+
 const routeFiles = readdirSync(path.join(__dirname, './routes'));
 for (const file of routeFiles) {
     let baseName = path.basename(file, path.extname(file));
