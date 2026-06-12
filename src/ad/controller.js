@@ -302,6 +302,8 @@ import { adminDb as adminDbPool } from "../../config/adminDb.js";
 import dayjs   from "dayjs";
 import utc     from "dayjs/plugin/utc.js";
 import timezone from "dayjs/plugin/timezone.js";
+import { existingPool } from '../../config/dbExisiting.js';
+import { sendNotificationNew } from "../../helpers/fcm.js";
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
@@ -1897,21 +1899,47 @@ export const getActiveAd = async ({ device_id, fcm_token, user_id }) => {
     }
  
     const ad = adRows[0];
+
+    console.log("fetched ad------>",ad)
  
     // ── 3. Governing rule ─────────────────────────────────────────────────────
     const rules       = Array.isArray(ad.rules) ? ad.rules : JSON.parse(ad.rules ?? "[]");
     const nowIST      = dayjs().tz(IST);
+    console.log("ad rules----->",rules)
+    console.log("nowIST", nowIST.format());
+    console.log("start_at", dayjs(rules[0].start_at).tz("Asia/Kolkata", true).format());
+    console.log("end_at", dayjs(rules[0].end_at).tz("Asia/Kolkata", true).format());
+    // const activeRules = rules
+    //   .filter((r) => {
+    //     if (!r.is_enabled) return false;
+    //     if (r.start_at && dayjs(r.start_at).tz(IST).isAfter(nowIST))  return false;
+    //     if (r.end_at   && dayjs(r.end_at).tz(IST).isBefore(nowIST))   return false;
+    //     return true;
+    //   })
+    //   .sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
     const activeRules = rules
-      .filter((r) => {
-        if (!r.is_enabled) return false;
-        if (r.start_at && dayjs(r.start_at).tz(IST).isAfter(nowIST))  return false;
-        if (r.end_at   && dayjs(r.end_at).tz(IST).isBefore(nowIST))   return false;
-        return true;
-      })
-      .sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
+  .filter((r) => {
+    if (!r.is_enabled) return false;
+
+    const startAt = r.start_at
+      ? dayjs(r.start_at).tz("Asia/Kolkata", true)
+      : null;
+
+    const endAt = r.end_at
+      ? dayjs(r.end_at).tz("Asia/Kolkata", true)
+      : null;
+
+    if (startAt && startAt.isAfter(nowIST)) return false;
+    if (endAt && endAt.isBefore(nowIST)) return false;
+
+    return true;
+  })
+  .sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
+    console.log("activeRules ad------>",activeRules)
  
     const governingRule = activeRules[0] ?? null;
     const maxPerDay     = governingRule ? parseInt(governingRule.max_shows_per_day) : 0;
+    console.log("activeRules maxprday ad------>",maxPerDay)
  
     const currentUTC = nowUTC();
  
@@ -1932,6 +1960,8 @@ export const getActiveAd = async ({ device_id, fcm_token, user_id }) => {
         [device_id, fcm_token, user_id ?? null, currentUTC]
       );
       await client.query("COMMIT");
+    console.log("max per day inserted ad------>",maxPerDay)
+
       return _eligibleResponse(ad, inserted[0], maxPerDay, "New device registered");
     }
  
@@ -1952,6 +1982,8 @@ export const getActiveAd = async ({ device_id, fcm_token, user_id }) => {
         [currentUTC, user_id ?? null, device_id, fcm_token]
       );
       await client.query("COMMIT");
+    console.log("max per day 24hrs reset ad------>",maxPerDay)
+
       return _eligibleResponse(ad, updated[0], maxPerDay, "24-hour window reset");
     }
  
@@ -1973,6 +2005,20 @@ export const getActiveAd = async ({ device_id, fcm_token, user_id }) => {
         message:           "Daily limit reached",
       };
     }
+
+    if(!activeRules.length){
+      await client.query("ROLLBACK");
+           return {
+        eligible:          false,
+        data:              null,
+        session_id:        row.session_id,
+        // view_count:        currentCount,
+        // max_per_day:       maxPerDay,
+        // resets_in_minutes: minutesLeft > 0 ? minutesLeft : 0,
+        // resets_at:         resetsAt.format("YYYY-MM-DD HH:mm:ss"),
+        message:           "No Active Ad Found",
+      };
+    }
  
     // ── CASE C: within window, under cap → increment ──────────────────────────
     const { rows: updated } = await client.query(
@@ -1986,6 +2032,7 @@ export const getActiveAd = async ({ device_id, fcm_token, user_id }) => {
       [user_id ?? null, device_id, fcm_token]
     );
     await client.query("COMMIT");
+    console.log("max per day incremented ad------>",maxPerDay)
     return _eligibleResponse(ad, updated[0], maxPerDay, "Count incremented");
  
   } catch (err) {
@@ -2034,3 +2081,182 @@ const _eligibleResponse = (ad, sessionRow, maxPerDay, message) => ({
     ui_config: ad.ui_config,
   },
 });
+
+
+// GET /advertisement/:ad_id/notifications
+export const getAdNotifications = async (params) => {
+  const { ad_id } = params;
+  try {
+    const { rows } = await adminDbPool.query(
+      `SELECT * FROM advertisment_notification WHERE ad_id = $1 ORDER BY created_at ASC`,
+      [ad_id]
+    );
+    return { data: rows };
+  } catch (err) {
+
+    throw Boom.internal(err.message);
+  }
+};
+
+// POST /advertisement/:ad_id/notifications  — add one
+export const addAdNotification = async (params, payload) => {
+  const { ad_id } = params;
+  const { title, sub_heading, body, banner_url } = payload;
+  try {
+    const { rows } = await adminDbPool.query(
+      `INSERT INTO advertisment_notification (ad_id, title, sub_heading, body, banner_url)
+       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+      [ad_id, title, sub_heading, body, banner_url ?? null]
+    );
+    return { data: rows[0] };
+  } catch (err) {
+    console.log(err)
+    throw Boom.internal(err.message);
+  }
+};
+
+// PUT /advertisement/notifications/:id  — update one
+export const updateAdNotification = async (params, payload) => {
+  const { id } = params;
+  const { title, sub_heading, body, banner_url } = payload;
+  try {
+    const { rows } = await adminDbPool.query(
+      `UPDATE advertisment_notification SET
+        title       = COALESCE($1, title),
+        sub_heading = COALESCE($2, sub_heading),
+        body        = COALESCE($3, body),
+        banner_url  = COALESCE($4, banner_url),
+        updated_at  = NOW()
+       WHERE id = $5 RETURNING *`,
+      [title, sub_heading, body, banner_url, id]
+    );
+    if (!rows.length) throw Boom.notFound('Notification not found');
+    return { data: rows[0] };
+  } catch (err) {
+    throw Boom.internal(err.message);
+  }
+};
+
+// DELETE /advertisement/notifications/:id
+export const deleteAdNotification = async (params) => {
+  const { id } = params;
+  try {
+    await adminDbPool.query(
+      `DELETE FROM advertisment_notification WHERE id = $1`,
+      [id]
+    );
+    return { message: 'Deleted' };
+  } catch (err) {
+    throw Boom.internal(err.message);
+  }
+};
+
+
+export const pushadnotificationForallusers = async(params)=>{
+  // let {title,bodytxt} = body
+  const client  = await existingPool.connect()
+  const {id} = params
+  try{
+
+
+    const {rows:notificationAdcontent} = await adminDbPool.query(`
+        SELECT * FROM advertisment_notification WHERE id = $1
+      `,[id])
+
+      if(!notificationAdcontent.length){
+        throw Boom.internal("Notification content not found");
+      } 
+
+
+
+        const { rows: fcmTokens } = await client.query(
+            `SELECT user_id, device_id, fcm_token 
+             FROM fcm 
+             WHERE isloggedout=false`
+          );
+          
+          const userIds = fcmTokens.map((d)=>d.user_id)
+
+          const { rows } = await client.query(
+            `
+            SELECT 
+              user_id, device_id, fcm_token,
+              ROW_NUMBER() OVER (PARTITION BY device_id ORDER BY created_at DESC) AS rn
+            FROM fcm
+            WHERE user_id = ANY($1::uuid[])
+            `,
+            [userIds]
+          );
+          console.log("⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️ active FCM tokens for users: rows",rows);
+
+          // Split results in JS
+          const activeUser = rows.filter(r => Number(r.rn) === 1);
+          const inActiveUser = rows.filter(r => Number(r.rn) > 1);
+
+          console.log("⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️ active FCM tokens for users:",{ activeUser, inActiveUser });
+ 
+          const filteredInactiveUsers = inActiveUser.filter(
+            inactive => !activeUser.some(active => active.user_id === inactive.user_id)
+          )
+
+          console.log("⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️ active FCM tokens for users: filtered",filteredInactiveUsers);
+
+  
+
+        // console.log("active check tokens----->",activeFcmTokens)
+
+
+      for (const tokenRow of activeUser) {
+      //  const {rows:userData} = await client.query(`select * from users where id=$1`,[tokenRow.user_id])
+      //  console.log("push notification userData",userData,tokenRow.user_id, userData[0]?.name??'invalid name')
+        let typebasedTitle = notificationAdcontent[0].title
+        try {
+
+          await sendNotificationNew({
+            title: typebasedTitle ,
+            body:  notificationAdcontent[0].body,
+            data: {
+              banner_img:  "",
+              router: "/main-screen",
+              pathParameters: JSON.stringify({
+                title:typebasedTitle,
+                body: notificationAdcontent[0].body,
+                subheading: notificationAdcontent[0].sub_heading || "",
+                userId: tokenRow.user_id,
+                //  notification_type: "family",
+              }),
+              // genmessage_id: msg_id,
+            },
+            user_id: tokenRow.user_id,
+            device_id: tokenRow.device_id,
+            fcm_token: tokenRow.fcm_token,
+            silent: false,
+          });
+          console.log(`✅ Notification sent to user ${tokenRow.user_id}`);
+        } catch (err) {
+          console.error(
+            `❌ No Fcm Send error for user ${tokenRow.user_id}:`,
+            err.message
+          );
+          continue
+        }
+        
+      }
+
+        const { rows:updatedData } = await adminDbPool.query(
+          `UPDATE advertisment_notification SET
+            is_triggered = true,
+            triggered_at = NOW(),
+            updated_at  = NOW()
+          WHERE id = $1 RETURNING *`,
+          [id]
+        );
+    return updatedData
+  }catch (error) {
+    await client.query("ROLLBACK");
+    console.error('send push alone  notification error:', error);
+    throw boom.badRequest(error.message);
+  }
+}
+
+

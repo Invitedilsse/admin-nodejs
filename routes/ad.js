@@ -52,6 +52,11 @@ import {
   // serving
   getEligibleAds,
   getActiveAd,
+  getAdNotifications,
+  addAdNotification,
+  updateAdNotification,
+  deleteAdNotification,
+  pushadnotificationForallusers,
 } from "../src/ad/controller.js";
 
 // ── Schemas ───────────────────────────────────────────────────────────────────
@@ -75,6 +80,10 @@ import {
   // serving
   getEligibleAdsSchema,
   getActiveAdSchema,
+  putAdNotifiSchema,
+  AdIdNotiIdfiSchema,
+  getAdIdNotifiSchema,
+  postAdNotifiSchema,
 } from "../src/ad/schema.js";
 
 const router = Router();
@@ -247,6 +256,7 @@ router.get(
  */
 router.get(
   "/eligible-ads",
+  // authenticateJWT,
   celebrate(getEligibleAdsSchema, options),
   controllerHandler(getEligibleAds, (req) => [req.query])
 );
@@ -256,6 +266,34 @@ router.post(
   celebrate(getActiveAdSchema, options),
   controllerHandler(getActiveAd, (req) => [req.body])
 );
- 
+
+
+ router.get(
+  "/:ad_id/notifications",
+  celebrate(getAdIdNotifiSchema, options),
+  controllerHandler(getAdNotifications, (req) => [req.params])
+);
+router.post(
+  "/:ad_id/notifications",
+  celebrate(postAdNotifiSchema, options),
+  controllerHandler(addAdNotification, (req) => [req.params,req.body])
+);
+router.put(
+  "/notifications/:id",
+  celebrate(putAdNotifiSchema, options),
+  controllerHandler(updateAdNotification, (req) => [req.params,req.body])
+);
+router.delete(
+  "/notifications/:id",
+  celebrate(AdIdNotiIdfiSchema, options),
+  controllerHandler(deleteAdNotification, (req) => [req.params])
+);
+
+
+router.get(
+  "/trigger-notifications/:id",
+  celebrate(AdIdNotiIdfiSchema, options),
+  controllerHandler(pushadnotificationForallusers, (req) => [req.params])
+);
 
 export default router;

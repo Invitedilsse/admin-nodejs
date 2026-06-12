@@ -109,6 +109,21 @@ export const createadvertismentTable = async () => {
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP 
       );`
 
+         const createadnotificationQuery = `
+        CREATE TABLE  IF NOT EXISTS advertisment_notification (
+          id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+          ad_id UUID REFERENCES advertisment(id) ON DELETE CASCADE,
+          title text not null,
+          sub_heading TEXT ,
+          body text not null,
+          banner_url text,
+          is_triggered boolean default false,
+          triggered_at TIMESTAMP,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+  `
+
   try {
     await adminDb.query(creatEnumstatus)
     await adminDb.query(query);
@@ -126,6 +141,9 @@ export const createadvertismentTable = async () => {
 
     await adminDb.query(aduiconfig)
     console.log("✅ advertisment ui config table created successfully");
+
+    await adminDb.query(createadnotificationQuery)
+    console.log("advertisment notification table created sucessfully")
 
   } catch (error) {
     console.error("❌ Error creating advertisement table:", error);

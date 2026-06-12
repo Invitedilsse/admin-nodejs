@@ -192,3 +192,41 @@ export const getActiveAdSchema = {
     fcm_token: joi.string().required(),
   }),
 };
+
+export const getAdIdNotifiSchema = {
+  params:joi.object({
+    ad_id: joi.string().uuid().required()
+  }),
+}
+
+export const AdIdNotiIdfiSchema = {
+  params:joi.object({
+    id: joi.string().uuid().required()
+  }),
+}
+
+export const postAdNotifiSchema = {
+  params:joi.object({
+    ad_id: joi.string().uuid().required()
+  }),
+  body: joi.object({
+    title:joi.string().required() ,
+    // ad_id:    joi.string().uuid().required(),
+    sub_heading:joi.string().allow("",null).optional(),
+    body: joi.string().required(),
+     banner_url:joi.string().optional().allow(null,"")
+  }),
+};
+
+export const putAdNotifiSchema = {
+  params:joi.object({
+    id: joi.string().uuid().required()
+  }),
+  body: joi.object({
+    title:joi.string().required() ,
+    // ad_id: joi.string().uuid().required(),
+    sub_heading:joi.string().allow("",null).optional(),
+    body: joi.string().required(),
+    banner_url:joi.string().optional().allow(null,"")
+  }),
+};
