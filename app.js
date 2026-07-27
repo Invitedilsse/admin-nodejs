@@ -13,6 +13,7 @@ import { createOtpTable } from './src/otp/index.js';
 import { createmappedContactcallersTable } from './src/assign-task/index.js';
 import { createCallManagements } from './src/call-managements/index.js';
 import { createadvertismentTable } from './src/ad/index.js';
+import { ensureAdminReminderColumn } from './src/reminder-management/service.js';
 dotenv.config();
 const app = express();
 const __filename = fileURLToPath(import.meta.url);
@@ -92,6 +93,7 @@ createOtpTable()
 createmappedContactcallersTable()
 createCallManagements()
 createadvertismentTable()
+ensureAdminReminderColumn()
 
 const routeFiles = readdirSync(path.join(__dirname, './routes'));
 for (const file of routeFiles) {
