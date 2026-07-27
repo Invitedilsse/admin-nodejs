@@ -17,6 +17,7 @@ import {
   userRemindersQuery,
   appUsersQuery,
   allUserIdsQuery,
+  MAX_BROADCAST_USERS,
   createRemindersForUsers,
   userDevicesQuery,
   exportQuery
@@ -206,8 +207,11 @@ export const reminderCreateController = async (body, loggedUser) => {
     const { target, user_ids = [], ...payload } = body;
 
     let userIds = [];
+    let truncated = false;
     if (target === 'all') {
-      userIds = await allUserIdsQuery();
+      const all = await allUserIdsQuery();
+      userIds = all.userIds;
+      truncated = all.truncated;
     } else {
       userIds = [...new Set(user_ids)];
     }
@@ -233,8 +237,12 @@ export const reminderCreateController = async (body, loggedUser) => {
     }).catch((err) => console.log('[reminder-admin] push fan-out failed:', err.message));
 
     return {
-      message: `Reminder created for ${created.length} user${created.length === 1 ? '' : 's'}.`,
+      message:
+        `Reminder created for ${created.length} user${created.length === 1 ? '' : 's'}.` +
+        // Surfaced rather than silently reaching fewer users than intended.
+        (truncated ? ` Capped at ${MAX_BROADCAST_USERS} recipients.` : ''),
       created_count: created.length,
+      truncated,
       target
     };
   } catch (err) {

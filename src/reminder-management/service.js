@@ -427,10 +427,29 @@ export const appUsersQuery = async ({ search = '', limit = 50 }) => {
   return rows;
 };
 
-/** Every app user id — the target set when the admin pushes to everyone. */
+/**
+ * Every app user id — the target set when the admin pushes to everyone.
+ *
+ * Bounded so an unexpectedly large user table cannot exhaust memory. If the cap
+ * is reached the caller is told, rather than silently reaching fewer users than
+ * the admin believes.
+ */
+export const MAX_BROADCAST_USERS = 200000;
+
+/** Users per transaction when broadcasting; keeps each transaction short. */
+const BROADCAST_CHUNK = 1000;
+
 export const allUserIdsQuery = async () => {
-  const { rows } = await existDb.query(`SELECT id FROM users;`);
-  return rows.map((r) => r.id);
+  const { rows } = await existDb.query(
+    `SELECT id FROM users ORDER BY created_at ASC NULLS LAST LIMIT $1;`,
+    [MAX_BROADCAST_USERS + 1]
+  );
+  const truncated = rows.length > MAX_BROADCAST_USERS;
+
+  return {
+    userIds: rows.slice(0, MAX_BROADCAST_USERS).map((r) => r.id),
+    truncated,
+  };
 };
 
 /**
@@ -452,23 +471,40 @@ export const createRemindersForUsers = async ({ userIds, adminId, payload }) => 
     schedules = []
   } = payload;
 
-  const client = await existDb.connect();
+  // De-duplicated alert offsets, computed once for every target user.
+  const seen = new Set();
+  const offsets = [];
+  for (const schedule of schedules) {
+    const offset = Number(schedule.offset_minutes);
+    if (!Number.isFinite(offset) || seen.has(offset)) continue;
+    seen.add(offset);
+    offsets.push({ offset, label: schedule.label || null });
+  }
+
   const created = [];
 
-  try {
-    await client.query('BEGIN');
+  // Chunked rather than one statement per user in a single transaction. A
+  // broadcast to 100k users was 300k+ serial INSERTs holding locks for minutes;
+  // set-based inserts per chunk keep each transaction short and bounded.
+  for (let i = 0; i < userIds.length; i += BROADCAST_CHUNK) {
+    const batch = userIds.slice(i, i + BROADCAST_CHUNK);
+    const client = await existDb.connect();
 
-    for (const userId of userIds) {
-      const { rows } = await client.query(
+    try {
+      await client.query('BEGIN');
+
+      // One INSERT ... SELECT creates every reminder for this chunk.
+      const { rows: reminders } = await client.query(
         `
         INSERT INTO family_reminders
           (created_by, created_by_admin, title, description, remind_at,
            venue_name, venue_address, priority, comment_mode)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+        SELECT u, $2, $3, $4, $5, $6, $7, $8, $9
+        FROM unnest($1::uuid[]) AS u
         RETURNING id, created_by;
         `,
         [
-          userId,
+          batch,
           adminId,
           title,
           description,
@@ -479,45 +515,50 @@ export const createRemindersForUsers = async ({ userIds, adminId, payload }) => 
           comment_mode
         ]
       );
-      const reminder = rows[0];
 
+      const reminderIds = reminders.map((r) => r.id);
+
+      // Creator membership for the whole chunk in one statement.
       await client.query(
         `
         INSERT INTO family_reminder_members
           (reminder_id, user_id, name, relation, is_creator)
-        VALUES ($1,$2,NULL,'Creator',true)
+        SELECT r.id, r.created_by, NULL, 'Creator', true
+        FROM family_reminders r
+        WHERE r.id = ANY($1::uuid[])
         ON CONFLICT (reminder_id, user_id) DO NOTHING;
         `,
-        [reminder.id, userId]
+        [reminderIds]
       );
 
-      const seen = new Set();
-      for (const schedule of schedules) {
-        const offset = Number(schedule.offset_minutes);
-        if (!Number.isFinite(offset) || seen.has(offset)) continue;
-        seen.add(offset);
+      // Alerts: cross join chunk reminders with the offset list.
+      if (offsets.length > 0) {
         await client.query(
           `
           INSERT INTO family_reminder_schedules (reminder_id, offset_minutes, label)
-          VALUES ($1,$2,$3)
+          SELECT rid, s.offset_minutes, s.label
+          FROM unnest($1::uuid[]) AS rid
+          CROSS JOIN unnest($2::int[], $3::text[]) AS s(offset_minutes, label)
           ON CONFLICT (reminder_id, offset_minutes) DO NOTHING;
           `,
-          [reminder.id, offset, schedule.label || null]
+          [reminderIds, offsets.map((o) => o.offset), offsets.map((o) => o.label)]
         );
       }
 
-      created.push({ reminderId: reminder.id, userId });
+      await client.query('COMMIT');
+
+      reminders.forEach((r) =>
+        created.push({ reminderId: r.id, userId: r.created_by })
+      );
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
     }
-
-    await client.query('COMMIT');
-
-    return created;
-  } catch (err) {
-    await client.query('ROLLBACK');
-    throw err;
-  } finally {
-    client.release();
   }
+
+  return created;
 };
 
 /** Active device tokens for a user, so the admin push reaches every device. */
