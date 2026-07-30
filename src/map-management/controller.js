@@ -5,7 +5,7 @@ import { resendOtp } from '../otp/controller.js';
 import aws from "aws-sdk"
 import { existingPool } from '../../config/dbExisiting.js';
 import { assignedContactList } from '../call-managements/controller.js';
-import { createMapTemplate, createOfflineEvent, createOfflineOccasion, deleteMapTemplateById, deleteOfflineEventById, deleteOfflineOccasionById, listOfflineEvents, listOfflineEventsMob, listOfflineOccasions, listTemplates, updateMapTemplateById, updateOfflineEventById, updateOfflineOccasionById } from './service.js';
+import { createMapTemplate, createOfflineBannerImgService, createOfflineEvent, createOfflineOccasion, deleteMapTemplateById, deleteOfflineEventById, deleteOfflineImgService, deleteOfflineOccasionById, getOfflineImgService, listOfflineEvents, listOfflineEventsMob, listOfflineOccasions, listTemplates, updateMapTemplateById, updateOfflineEventById, updateOfflineOccasionById } from './service.js';
 
 
 
@@ -312,3 +312,50 @@ export async function deleteOfflineoccasionByIdController(params,user) {
     throw Boom.badRequest(error.message) ;
   } 
 }
+
+
+export async function createOfflineBannerImg(body) {
+
+  try {
+    //  const responseDetail = await service.getQuickListService(user_id);
+     const responseDetail = await createOfflineBannerImgService(body);
+
+    return {
+      message: "Offline Event added successfully.",
+      data: responseDetail,
+    };
+  } catch (error) {
+    console.error("Error event template add controller:", error.message);
+    throw Boom.badRequest(error.message) ;
+  } 
+}
+
+export async function deleteOfflineBannerImg(params) {
+  const id = params.id
+  try {
+    //  const responseDetail = await service.getQuickListService(user_id);
+     const responseDetail = await deleteOfflineImgService(id);
+
+    return {
+      message: "Offline Event added successfully.",
+      data: responseDetail,
+    };
+  } catch (error) {
+    console.error("Error event template add controller:", error.message);
+    throw Boom.badRequest(error.message) ;
+  } 
+}
+
+export async function getOfflineBannerImg() {
+  // const id = params.id
+  try {
+    //  const responseDetail = await service.getQuickListService(user_id);
+     const responseDetail = await getOfflineImgService();
+
+    return responseDetail
+  } catch (error) {
+    console.error("Error event template add controller:", error.message);
+    throw Boom.badRequest(error.message) ;
+  } 
+}
+

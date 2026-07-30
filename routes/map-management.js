@@ -4,12 +4,15 @@ import { upload } from "../helpers/multer.js";
 import { celebrate } from "celebrate";
 import { controllerHandler } from "../helpers/controller-handeller";
 import { AdminOnly, authenticateJWT } from "../helpers/auth.js";
-import { createMapTemplateController, createOfflineEventController, createOfflineoccasionController, deleteMapTemplateByIdController, deleteOfflineEventByIdController, deleteOfflineoccasionByIdController, listOfflineEventsController, listOfflineEventsMobController, listOfflineoccasionController, listTemplatesController, updateMapTemplateByIdController, updateOfflineEventByIdController, updateOfflineoccasionByIdController } from "../src/map-management/controller.js";
-import { addEventTemplateSchema, addMapTemplateSchema, addOccTemplateSchema, options } from "../src/map-management/schema.js";
+import { createMapTemplateController, createOfflineBannerImg, createOfflineEventController, createOfflineoccasionController, deleteMapTemplateByIdController, deleteOfflineBannerImg, 
+  deleteOfflineEventByIdController, deleteOfflineoccasionByIdController, getOfflineBannerImg,
+   listOfflineEventsController, listOfflineEventsMobController, listOfflineoccasionController, listTemplatesController, 
+   updateMapTemplateByIdController, updateOfflineEventByIdController, updateOfflineoccasionByIdController } from "../src/map-management/controller.js";
+import { addEventTemplateSchema, addMapTemplateSchema, addOccTemplateSchema, options, uploadOfflinebannerImg } from "../src/map-management/schema.js";
 
 const router = express.Router();
 
-
+//base map-management
 router.post(
   "/create-map-template",
   authenticateJWT,
@@ -112,5 +115,28 @@ router.delete(
   // celebrate(schema.addMapTemplateSchema, schema.options),
   controllerHandler(deleteOfflineoccasionByIdController, (req, res, next) => [req.params,req.user])
 );
+
+router.post(
+  "/create-offline-page-banner",
+  authenticateJWT,
+  celebrate(uploadOfflinebannerImg, options),
+  controllerHandler(createOfflineBannerImg, (req, res, next) => [req.body,req.user])
+);
+
+router.delete(
+  "/delete-offline-page-banner/:id",
+  authenticateJWT,
+  // celebrate(uploadOfflinebannerImg, options),
+  controllerHandler(deleteOfflineBannerImg, (req, res, next) => [req.params])
+);
+
+router.get(
+  "/get-offline-page-banner",
+  // authenticateJWT,
+  // celebrate(uploadOfflinebannerImg, options),
+  controllerHandler(getOfflineBannerImg, (req, res, next) => [])
+);
+
+
 
 export default router;

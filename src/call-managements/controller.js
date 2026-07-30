@@ -4,6 +4,7 @@ import { adminDb } from '../../config/adminDb.js';
 import { existingPool } from '../../config/dbExisiting.js';
 import { sendWhatsappNotification } from '../../helpers/send-wa-msg.js';
 import axios from 'axios';
+import { sendWhatsappNotificationttwapi } from '../../helpers/whatsapp-ttwapi.js';
 
 const API_BASE_URL = process.env.BLUEWABA_API_URL || "https://bluewaba.com/api";
 const VENDOR_UID =
@@ -457,7 +458,8 @@ export async function triggerwanotification(qery,loggedUser) {
 
      const sanitizedCountryCode = country_code.replace(/\+/g, '');
      const phoneNumber = `${sanitizedCountryCode}${mobile}`;
-        const mannualtrigger = await sendWhatsappNotification({
+    //  sendWhatsappNotification
+        const mannualtrigger = await  sendWhatsappNotificationttwapi({
             "phone_number": phoneNumber,
             "type" : "template",
             "template_name" : "newone",

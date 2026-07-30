@@ -127,14 +127,15 @@ export const functionContactlist = async (query, loggedUser) => {
       SELECT DISTINCT u.id , mcc.contact_id , u.first_name , u.last_name from 
       users u
       left join  mappedContact_callers mcc on mcc.callers_id = u.id 
-      where  u.role = 'support'
+      where  u.role = 'support' 
+     --and mcc.function_id = $1
       order by u.first_name, u.last_name ASC
     `;
 
     const { rows: callerMapped } = await client.query(callerMappedQuery
-    //   [
-    //   functionId
-    // ]
+      [
+      functionId
+    ]
   );
 
     console.log("callerMapped--------->",callerMapped)

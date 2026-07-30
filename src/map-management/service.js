@@ -562,3 +562,55 @@ export const listOfflineOccasionsMob = async (queryParams) => {
     throw Boom.badRequest(err.message);
   }
 };
+
+export const createOfflineBannerImgService = async (body) => {
+  try {
+    const { file } = body;
+
+    const query = `
+      INSERT INTO offline_page_img (file)
+      VALUES ($1)
+      RETURNING *;
+    `;
+
+    const { rows } = await pool.query(query, [file]);
+    return rows[0];
+  } catch (err) {
+    console.log("create offline banner img creation error ❌", err);
+    throw err.isBoom ? err : Boom.badRequest(err.message);
+  }
+};
+
+export const deleteOfflineImgService = async (id) => {
+  try {
+    // const { file } = body;
+
+    const query = `
+      delete from  offline_page_img
+      where id = $1;
+    `;
+
+    const { rows } = await pool.query(query, [id]);
+    return {message:"Banner Img deleted successfully"};
+  } catch (err) {
+    console.log("delete offline banner img  error ❌", err);
+    throw err.isBoom ? err : Boom.badRequest(err.message);
+  }
+};
+
+export const getOfflineImgService = async () => {
+  try {
+    // const { file } = body;
+
+    const query = `
+     select * from offline_page_img;
+    `;
+
+    const { rows:imgRows } = await pool.query(query);
+    return {message:"Banner Img Fetched successfully" , data:imgRows};
+  } catch (err) {
+    console.log("delete offline banner img  error ❌", err);
+    throw err.isBoom ? err : Boom.badRequest(err.message);
+  }
+};
+
