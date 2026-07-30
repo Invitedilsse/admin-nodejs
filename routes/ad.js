@@ -57,6 +57,10 @@ import {
   updateAdNotification,
   deleteAdNotification,
   pushadnotificationForallusers,
+  getActiveWesiteRedirect,
+  upsertwesiteredirect,
+  listWesiteRedirect,
+  recordWesiteRedirectClick,
 } from "../src/ad/controller.js";
 
 // ── Schemas ───────────────────────────────────────────────────────────────────
@@ -84,6 +88,9 @@ import {
   AdIdNotiIdfiSchema,
   getAdIdNotifiSchema,
   postAdNotifiSchema,
+  websiteByDateSchema,
+  upsertWebRecordSchema,
+  upsertWebisteSchema,
 } from "../src/ad/schema.js";
 
 const router = Router();
@@ -295,5 +302,35 @@ router.get(
   celebrate(AdIdNotiIdfiSchema, options),
   controllerHandler(pushadnotificationForallusers, (req) => [req.params])
 );
+
+
+
+router.get(
+  "/getactive-redirectlink",
+  celebrate(websiteByDateSchema, options),
+  controllerHandler(getActiveWesiteRedirect, (req) => [req.query])
+);
+
+router.post(
+  "/upsert-websiteredirect",
+  authenticateJWT,
+  celebrate(upsertWebisteSchema, options),
+  controllerHandler(upsertwesiteredirect, (req) => [req.body,req.user])
+);
+
+router.get(
+  "/getall-redirectlink",
+  // celebrate(AdIdNotiIdfiSchema, options),
+  controllerHandler(listWesiteRedirect, (req) => [])
+);
+
+router.post(
+  "/upsert-recordhistory",
+  // authenticateJWT,
+  celebrate(upsertWebRecordSchema, options),
+  controllerHandler(recordWesiteRedirectClick, (req) => [req.body,req.user])
+);
+
+
 
 export default router;

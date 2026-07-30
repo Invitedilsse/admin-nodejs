@@ -124,6 +124,33 @@ export const createadvertismentTable = async () => {
       );
   `
 
+    const webistequery = `
+    CREATE TABLE IF NOT EXISTS wesite_redirect (
+    id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+        created_by UUID,
+        name text not null,
+        logo JSONB,
+        is_active boolean default true,
+        linkname_1 social_link default null, 
+        link_1 text default null,
+        active_from TIMESTAMP,
+        active_till TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+  `;
+  
+   const webisteReportquery = `
+    CREATE TABLE IF NOT EXISTS wesite_redirect_report (
+    id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+        wesite_redirect_id UUID REFERENCES wesite_redirect(id) ON DELETE CASCADE,
+        user_id UUID  not null,
+        count integer  default 0 ,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+  `;
+
   try {
     await adminDb.query(creatEnumstatus)
     await adminDb.query(query);
@@ -144,6 +171,13 @@ export const createadvertismentTable = async () => {
 
     await adminDb.query(createadnotificationQuery)
     console.log("advertisment notification table created sucessfully")
+
+    
+        await adminDb.query(webistequery)
+    console.log("✅ wesite_redirect   table created successfully");
+
+    await adminDb.query(webisteReportquery)
+    console.log("wesite_redirect_report  table created sucessfully")
 
   } catch (error) {
     console.error("❌ Error creating advertisement table:", error);

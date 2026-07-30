@@ -41,3 +41,15 @@ export const addOccTemplateSchema = {
       occasion_name: joi.string().required()
   }),
 };
+
+export const uploadOfflinebannerImg = {
+  body: joi.object().keys({
+      file: 
+        joi.object({
+          file_name: joi.string().required(),
+          url: joi.string().uri().required(),
+          key: joi.string().required()
+        }).required()
+        
+  }),
+};

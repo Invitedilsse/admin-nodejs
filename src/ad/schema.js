@@ -1,4 +1,5 @@
 import { Joi as joi } from "celebrate";
+import { query } from "express";
 
 export const options = {
   abortEarly: false,
@@ -229,4 +230,30 @@ export const putAdNotifiSchema = {
     body: joi.string().required(),
     banner_url:joi.string().optional().allow(null,"")
   }),
+};
+
+export const upsertWebisteSchema = {
+  body: joi.object({
+    id:         joi.string().uuid().optional(),
+    name:       joi.string().required().min(1).max(100),
+    logo:       logoSchema.required(),      // new
+    is_active:  joi.boolean().required(),
+    linkname_1: joi.string().valid(...SOCIAL_LINKS).optional().allow(null),
+    link_1:     joi.string().uri().required(),
+    active_from:       joi.string().required(),
+    active_till:       joi.string().required(),
+  })
+};
+
+export const websiteByDateSchema = {
+  query:joi.object({
+    date: joi.string().required()
+  }),
+}
+
+export const upsertWebRecordSchema = {
+  body: joi.object({
+    wesite_redirect_id:         joi.string().uuid().required(),
+    userId:         joi.string().uuid().required(),
+  })
 };

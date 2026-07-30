@@ -1,6 +1,8 @@
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken'; 
 import { adminDb } from '../config/adminDb.js';
+import Boom from '@hapi/boom';
+
 
 export const hashPassword= (password)=>{
     return new Promise( (resolve, reject) => {

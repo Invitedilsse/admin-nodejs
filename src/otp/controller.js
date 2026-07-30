@@ -3,6 +3,7 @@ import { adminDb as adminDbPool } from "../../config/adminDb.js";
 import { sendWhatsappNotification } from '../../helpers/send-wa-msg.js';
 import { checkMobileNumberExist, createOtp, deleteByMobileNumber, getUserByMobileNumber, updateUserByMobileNumber } from './service.js';
 import { generateToken } from '../../helpers/auth.js';
+import { sendWhatsappNotificationttwapi } from '../../helpers/whatsapp-ttwapi.js';
 
 export const resendOtp = async (params) => {
   console.log('resendOtpparams------------------', params);
@@ -22,7 +23,8 @@ export const resendOtp = async (params) => {
   const sanitizedCountryCode = country_code.replace(/\+/g, '');
   const phoneNumber = `${sanitizedCountryCode}${mobile}`;
 
-  const otpStatus = await sendWhatsappNotification({
+  // sendWhatsappNotification
+  const otpStatus = await  sendWhatsappNotificationttwapi({
     "phone_number": phoneNumber,
     "type" : "template",
     "template_name" : "otp",

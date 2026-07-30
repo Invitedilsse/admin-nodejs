@@ -1804,6 +1804,17 @@ export const getActiveAd = async ({ device_id, fcm_token, user_id }) => {
   const client = await adminDbPool.connect();
  
   try {
+    const testusers = [ 'f9460ab5-ed96-4525-97ab-c669f8dfa577',
+'d72df6f0-e9da-488f-9675-8ff32c8a425f',
+'2014cb06-f475-4966-94d4-b99fa3b2d7d8',
+'fdf3ae4f-5c52-4c30-87cc-87512bab8ba5']
+
+console.log("🪽🪽🪽🪽🪽🪽🪽🪽ad user pass",testusers.includes(user_id),user_id)
+
+ if (!testusers.includes(user_id)) {
+    return;
+  }
+
     await client.query("BEGIN");
  
     // ── 1. Active ad with files + rules ──────────────────────────────────────
@@ -2260,3 +2271,283 @@ export const pushadnotificationForallusers = async(params)=>{
 }
 
 
+// NOTE: assumes `adminDbPool`, `Boom` are already imported/available in this
+// file the same way they are in your existing upsertwesiteredirect function.
+
+export const upsertwesiteredirect = async (payload, loggedUser) => {
+  const client = await adminDbPool.connect();
+  const userId = loggedUser.id;
+
+  try {
+    await client.query("BEGIN");
+
+    const {
+      id,
+      name,
+      logo,                        // JSONB  { key, url, file_name }
+      is_active,
+      linkname_1,
+      link_1,
+      active_from,
+      active_till
+    } = payload;
+
+    let adId;
+
+    if (id) {
+      // ── UPDATE ──────────────────────────────────────────────────────────────
+      const { rows } = await client.query(
+        `
+        UPDATE wesite_redirect
+        SET
+          name        = COALESCE($1,  name),
+          logo        = COALESCE($2,  logo),
+          is_active   = COALESCE($3,  is_active),
+          linkname_1  = COALESCE($4,  linkname_1),
+          link_1      = COALESCE($5, link_1),
+          active_from      = COALESCE($6, active_from),
+          active_till      = COALESCE($7, active_till),
+          updated_at  = CURRENT_TIMESTAMP
+        WHERE id = $8
+        RETURNING *
+        `,
+        [
+          name,
+          logo ? JSON.stringify(logo) : null,
+          is_active ?? null,
+          linkname_1 ?? null,
+          link_1 ?? null,
+          active_from         ?? null,
+          active_till    ?? null,
+          id,
+        ]
+      );
+
+      if (!rows.length) throw Boom.notFound("Redirect Website not found");
+      adId = rows[0].id;
+
+    } else {
+      // ── INSERT ──────────────────────────────────────────────────────────────
+      const { rows } = await client.query(
+        `
+        INSERT INTO wesite_redirect
+          (created_by,
+          name,
+          logo,
+          is_active,
+          linkname_1,
+          link_1,
+          active_from,
+          active_till)
+        VALUES
+          ($1, $2, $3, $4, $5, $6, $7, $8)
+        RETURNING *
+        `,
+        [
+          userId,
+          name,
+          logo ? JSON.stringify(logo) : null,
+          is_active ?? null,
+          linkname_1 ?? null,
+          link_1 ?? null,
+          active_from         ?? null,
+          active_till    ?? null,
+        ]
+      );
+      adId = rows[0].id;
+    }
+
+    // Make only one ad active
+    const shouldBeActive = is_active ?? true;
+
+    if (shouldBeActive) {
+      await client.query(
+        `
+        UPDATE wesite_redirect
+        SET is_active = false,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id <> $1
+          AND is_active = true
+        `,
+        [adId]
+      );
+
+      await client.query(
+        `
+        UPDATE wesite_redirect
+        SET is_active = true,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = $1
+        `,
+        [adId]
+      );
+    }
+
+    // ── RETURN FULL ROW ──────────────────────────────────────────────────────
+    const { rows: result } = await client.query(
+      `
+      SELECT
+        a.*
+      FROM wesite_redirect a
+      WHERE a.id = $1
+      `,
+      [adId]
+    );
+
+    await client.query("COMMIT");
+
+    return {
+      message: id ? "wesite redirect updated" : "wesite redirect created",
+      data: result[0],
+    };
+  } catch (err) {
+    await client.query("ROLLBACK");
+    console.error("wesite redirect upsert error:", err);
+    throw Boom.conflict(err.message);
+  } finally {
+    client.release();
+  }
+};
+
+// ── LIST ALL ─────────────────────────────────────────────────────────────────
+export const listWesiteRedirect = async () => {
+  const client = await adminDbPool.connect();
+
+  try {
+    const { rows } = await client.query(
+      `
+      SELECT *
+      FROM wesite_redirect
+      ORDER BY created_at DESC
+      `
+    );
+
+    return {
+      message: "wesite redirect list fetched",
+      data: rows,
+    };
+  } catch (err) {
+    console.error("wesite redirect list error:", err);
+    throw Boom.conflict(err.message);
+  } finally {
+    client.release();
+  }
+};
+
+
+export const getActiveWesiteRedirect = async (query) => {
+  const client = await adminDbPool.connect();
+ 
+  try {
+    const rawDate = query?.date;
+ 
+    let date;
+ 
+    if (rawDate) {
+      const istParsed = dayjs.tz(rawDate, "Asia/Kolkata");
+ 
+      if (!istParsed.isValid()) {
+        throw Boom.badRequest("Invalid date");
+      }
+ 
+      date = istParsed.utc().format();
+    } else {
+      date = dayjs().utc().format();
+    }
+ 
+    const { rows } = await client.query(
+      `
+      SELECT *
+      FROM wesite_redirect
+      WHERE is_active = true
+        AND (active_from IS NULL OR active_from <= $1)
+        AND (active_till IS NULL OR active_till  >= $1)
+      ORDER BY active_from DESC NULLS LAST
+      LIMIT 1
+      `,
+      [date]
+    );
+ 
+    if (!rows.length) {
+      throw Boom.notFound("No active website redirect found for this date");
+    }
+ 
+    return {
+      message: "active wesite redirect fetched",
+      data: rows[0],
+    };
+  } catch (err) {
+    console.error("wesite redirect get-active error:", err);
+    throw err.isBoom ? err : Boom.conflict(err.message);
+  } finally {
+    client.release();
+  }
+};
+// ── RECORD A CLICK (increments per-user count) ───────────────────────────────
+// payload: { wesite_redirect_id }
+// loggedUser: the user sent from mobile on click
+export const recordWesiteRedirectClick = async (payload, loggedUser) => {
+  const client = await adminDbPool.connect();
+  // const userId = loggedUser.id;
+
+  try {
+    await client.query("BEGIN");
+
+    const { wesite_redirect_id,userId } = payload;
+
+    if (!wesite_redirect_id) {
+      throw Boom.badRequest("wesite_redirect_id is required");
+    }
+
+    const { rows: existing } = await client.query(
+      `
+      SELECT id, count
+      FROM wesite_redirect_report
+      WHERE wesite_redirect_id = $1
+        AND user_id = $2
+      `,
+      [wesite_redirect_id, userId]
+    );
+
+    let result;
+
+    if (existing.length) {
+      const { rows } = await client.query(
+        `
+        UPDATE wesite_redirect_report
+        SET count      = count + 1,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = $1
+        RETURNING *
+        `,
+        [existing[0].id]
+      );
+      result = rows[0];
+    } else {
+      const { rows } = await client.query(
+        `
+        INSERT INTO wesite_redirect_report
+          (wesite_redirect_id, user_id, count)
+        VALUES
+          ($1, $2, 1)
+        RETURNING *
+        `,
+        [wesite_redirect_id, userId]
+      );
+      result = rows[0];
+    }
+
+    await client.query("COMMIT");
+
+    return {
+      message: "wesite redirect click recorded",
+      data: result,
+    };
+  } catch (err) {
+    await client.query("ROLLBACK");
+    console.error("wesite redirect click error:", err);
+    throw err.isBoom ? err : Boom.conflict(err.message);
+  } finally {
+    client.release();
+  }
+};
