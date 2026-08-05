@@ -9,4 +9,5 @@
  
 fire-base-service-account.json 
 
-/.env".env" 
+/.env
+/.env.backup
