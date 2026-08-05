@@ -1,7 +1,7 @@
 import Boom from '@hapi/boom';
 import { adminDb as adminDbPool } from "../../config/adminDb.js";
 import { existingPool } from '../../config/dbExisiting.js';
-import { addEventTypeService, addOcrKeywordService, clearTypeMatchesService, deleteEventTypeService, deleteOcrKeywordService, exportNewVenues, getCompressSettingService, getEventTypesService, getFuzzyThresholdSettingService, getNewVenues, getOcrKeywordsService, getOcrLeaderboard, getOcrMainPrompt, getOcrModelConfigservice, getOcrUsageLogsService, getOcrUserQuotaListService, getRawPageDataService, getRawPageSettingService, getTypeMatchesService, setCompressSettingService, setFuzzyThresholdSettingService, setOcrModelConfigApiservice, setRawPageSettingService, updateUserOcrQuotaService, upsertOcrMainPrompt } from './service.js';
+import { addEventTypeService, addOcrKeywordService, clearTypeMatchesService, deleteEventTypeService, deleteOcrKeywordService, exportNewVenues, getCompressSettingService, getEventTypesService, getFuzzyThresholdSettingService, getNewVenues, getOcrKeywordsService, getOcrLeaderboard, getOcrMainPrompt, getOcrModelConfigservice, getOcrQuotaHistoryService, getOcrUsageLogsService, getOcrUserQuotaListService, getRawPageDataService, getRawPageSettingService, getTypeMatchesService, setCompressSettingService, setFuzzyThresholdSettingService, setOcrModelConfigApiservice, setRawPageSettingService, updateUserOcrQuotaService, upsertOcrMainPrompt } from './service.js';
 
 
 export async function getOcrUsageLogsController(query,user) {
@@ -39,6 +39,18 @@ export async function updateUserOcrQuotaController(query,body,user) {
     return responseDetail;
   } catch (error) {
     console.error("Error ocr usage log controller:", error.message);
+    throw Boom.badRequest(error.message) ;
+  } 
+}
+
+export async function getOcrQuotaHistoryController(query,user) {
+  const user_id = user.id
+  try {
+     const responseDetail = await getOcrQuotaHistoryService(query,user_id);
+
+    return responseDetail;
+  } catch (error) {
+    console.error("Error ocr quota history controller:", error.message);
     throw Boom.badRequest(error.message) ;
   } 
 }

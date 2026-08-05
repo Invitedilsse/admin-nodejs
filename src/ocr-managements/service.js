@@ -287,35 +287,207 @@ await findSuperUserorNot(user_id)
   return rows;
 };
 
+// export const updateUserOcrQuotaService = async (params, body, user_id) => {
+//   const { userId } = params;
+//   const { addAttempts, setAllowed } = body;
+
+//    await findSuperUserorNot(user_id)
+
+//   if (addAttempts != null) {
+//     await pool.query(`
+//       INSERT INTO ocr_user_quota (user_id, attempts_used, attempts_allowed)
+//       VALUES ($1, 0, 5 + $2)
+//       ON CONFLICT (user_id) DO UPDATE
+//         SET attempts_allowed = ocr_user_quota.attempts_allowed + $2, updated_at = NOW()
+//     `, [userId, parseInt(addAttempts)]);
+//   } else if (setAllowed != null) {
+//     await pool.query(`
+//       INSERT INTO ocr_user_quota (user_id, attempts_used, attempts_allowed)
+//       VALUES ($1, 0, $2)
+//       ON CONFLICT (user_id) DO UPDATE
+//         SET attempts_allowed = $2, updated_at = NOW()
+//     `, [userId, parseInt(setAllowed)]);
+//   } else {
+//     throw Boom.badRequest("Provide addAttempts or setAllowed");
+//   }
+
+//   const { rows } = await pool.query(
+//     `SELECT attempts_used, attempts_allowed FROM ocr_user_quota WHERE user_id = $1`, [userId]
+//   );
+//   return { success: true, ...rows[0] };
+// };
+
+// Increases (or sets) a user's attempts_allowed and records every change in
+// attempt_added_history. refreshed_attempts is reset to 0 on every change.
+// new_allowed in the history row always equals the resulting attempts_allowed.
 export const updateUserOcrQuotaService = async (params, body, user_id) => {
   const { userId } = params;
   const { addAttempts, setAllowed } = body;
 
-   await findSuperUserorNot(user_id)
+  await findSuperUserorNot(user_id);
 
-  if (addAttempts != null) {
-    await pool.query(`
-      INSERT INTO ocr_user_quota (user_id, attempts_used, attempts_allowed)
-      VALUES ($1, 0, 5 + $2)
-      ON CONFLICT (user_id) DO UPDATE
-        SET attempts_allowed = ocr_user_quota.attempts_allowed + $2, updated_at = NOW()
-    `, [userId, parseInt(addAttempts)]);
-  } else if (setAllowed != null) {
-    await pool.query(`
-      INSERT INTO ocr_user_quota (user_id, attempts_used, attempts_allowed)
-      VALUES ($1, 0, $2)
-      ON CONFLICT (user_id) DO UPDATE
-        SET attempts_allowed = $2, updated_at = NOW()
-    `, [userId, parseInt(setAllowed)]);
-  } else {
+  if (addAttempts == null && setAllowed == null) {
     throw Boom.badRequest("Provide addAttempts or setAllowed");
   }
 
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // Lock the row (if any) so concurrent quota updates for the same user
+    // can't race each other while we compute the new totals.
+    const { rows: existingRows } = await client.query(
+      `SELECT attempts_used, attempts_allowed, refreshed_attempts
+       FROM ocr_user_quota WHERE user_id = $1 FOR UPDATE`,
+      [userId]
+    );
+    const rowExists = existingRows.length > 0;
+    const previousAllowed = rowExists ? Number(existingRows[0].attempts_allowed) : 0;
+
+    let newAllowed;
+    let attemptsAdded;
+
+    if (addAttempts != null) {
+      const addValue = parseInt(addAttempts);
+      if (!Number.isFinite(addValue) || addValue <= 0) {
+        throw Boom.badRequest("addAttempts must be a positive number");
+      }
+
+      // attempts_allowed always increases by addValue on top of whatever it
+      // currently is (0 if the user has no row yet).
+      newAllowed = previousAllowed + addValue;
+
+      if (rowExists) {
+        await client.query(
+          `UPDATE ocr_user_quota
+              SET attempts_allowed = $2,
+                  refreshed_attempts = 0,
+                  updated_at = NOW()
+            WHERE user_id = $1`,
+          [userId, newAllowed]
+        );
+      } else {
+        await client.query(
+          `INSERT INTO ocr_user_quota (user_id, attempts_used, attempts_allowed, refreshed_attempts)
+           VALUES ($1, 0, $2, 0)`,
+          [userId, newAllowed]
+        );
+      }
+      attemptsAdded = addValue;
+    } else {
+      const setValue = parseInt(setAllowed);
+      if (!Number.isFinite(setValue) || setValue < 0) {
+        throw Boom.badRequest("setAllowed must be a non-negative number");
+      }
+
+      newAllowed = setValue;
+      if (rowExists) {
+        await client.query(
+          `UPDATE ocr_user_quota
+              SET attempts_allowed = $2,
+                  refreshed_attempts = 0,
+                  updated_at = NOW()
+            WHERE user_id = $1`,
+          [userId, newAllowed]
+        );
+      } else {
+        await client.query(
+          `INSERT INTO ocr_user_quota (user_id, attempts_used, attempts_allowed, refreshed_attempts)
+           VALUES ($1, 0, $2, 0)`,
+          [userId, newAllowed]
+        );
+      }
+      // setAllowed only counts as an "addition" worth logging if it actually
+      // raised the ceiling; lowering or leaving it unchanged is not.
+      attemptsAdded = newAllowed - previousAllowed;
+    }
+
+    if (attemptsAdded > 0) {
+      await client.query(
+        `INSERT INTO attempt_added_history
+           (user_id, previous_allowed, new_allowed, attempts_added, added_by)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [userId, previousAllowed, newAllowed, attemptsAdded, user_id]
+      );
+    }
+
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+
   const { rows } = await pool.query(
-    `SELECT attempts_used, attempts_allowed FROM ocr_user_quota WHERE user_id = $1`, [userId]
+    `SELECT attempts_used, attempts_allowed, refreshed_attempts
+     FROM ocr_user_quota WHERE user_id = $1`,
+    [userId]
   );
   return { success: true, ...rows[0] };
 };
+
+// Retrieves the audit trail of every attempts_allowed increase, optionally
+// filtered to a single user and/or a date range. Paginated like the other
+// admin listing endpoints in this file.
+export const getOcrQuotaHistoryService = async (query, user_id) => {
+  await findSuperUserorNot(user_id);
+
+  const page = parseInt(query.page || "1");
+  const limit = parseInt(query.limit || "25");
+  const offset = (page - 1) * limit;
+
+  const conditions = [];
+  const params = [];
+  let idx = 1;
+
+  if (query.userId) {
+    conditions.push(`h.user_id = $${idx}`);
+    params.push(query.userId);
+    idx++;
+  }
+  if (query.fromDate) {
+    conditions.push(`h.created_at >= $${idx}::date`);
+    params.push(query.fromDate);
+    idx++;
+  }
+  if (query.toDate) {
+    conditions.push(`h.created_at < ($${idx}::date + interval '1 day')`);
+    params.push(query.toDate);
+    idx++;
+  }
+
+  const whereClause = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+
+  const { rows } = await pool.query(
+    `SELECT
+        h.id, h.user_id, h.previous_allowed, h.new_allowed, h.attempts_added,
+        h.added_by, h.created_at,
+        u.name AS user_name, u.mobile AS user_mobile,
+        a.name AS added_by_name
+     FROM attempt_added_history h
+     LEFT JOIN users u ON u.id = h.user_id
+     LEFT JOIN users a ON a.id = h.added_by
+     ${whereClause}
+     ORDER BY h.created_at DESC
+     LIMIT $${idx} OFFSET $${idx + 1}`,
+    [...params, limit, offset]
+  );
+
+  const { rows: countRows } = await pool.query(
+    `SELECT COUNT(*) FROM attempt_added_history h ${whereClause}`,
+    params
+  );
+
+  return {
+    status: true,
+    data: rows,
+    page,
+    limit,
+    total: Number(countRows[0].count),
+  };
+};
+
 
 export const getOcrModelConfigservice = async (query, user_id) => {
   await findSuperUserorNot(user_id)
