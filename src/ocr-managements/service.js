@@ -278,7 +278,8 @@ await findSuperUserorNot(user_id)
       u.created_at AS registered_at,
       COALESCE(q.attempts_used, 0)    AS attempts_used,
       COALESCE(q.attempts_allowed, 50) AS attempts_allowed,
-      q.updated_at AS quota_updated_at
+      q.updated_at AS quota_updated_at,
+      q.custom_plan,q.custom_color
     FROM users u
     LEFT JOIN ocr_user_quota q ON u.id = q.user_id
     WHERE u.is_delete = false
@@ -322,7 +323,7 @@ await findSuperUserorNot(user_id)
 // new_allowed in the history row always equals the resulting attempts_allowed.
 export const updateUserOcrQuotaService = async (params, body, user_id) => {
   const { userId } = params;
-  const { addAttempts, setAllowed } = body;
+  const { addAttempts, setAllowed,custom_plan,custom_color } = body;
 
   await findSuperUserorNot(user_id);
 
@@ -337,7 +338,7 @@ export const updateUserOcrQuotaService = async (params, body, user_id) => {
     // Lock the row (if any) so concurrent quota updates for the same user
     // can't race each other while we compute the new totals.
     const { rows: existingRows } = await client.query(
-      `SELECT attempts_used, attempts_allowed, refreshed_attempts
+      `SELECT attempts_used, attempts_allowed, refreshed_attempts,remaining_attempt,custom_color
        FROM ocr_user_quota WHERE user_id = $1 FOR UPDATE`,
       [userId]
     );
@@ -349,7 +350,7 @@ export const updateUserOcrQuotaService = async (params, body, user_id) => {
 
     if (addAttempts != null) {
       const addValue = parseInt(addAttempts);
-      if (!Number.isFinite(addValue) || addValue <= 0) {
+      if (!Number.isFinite(addValue) || addValue < 0) {
         throw Boom.badRequest("addAttempts must be a positive number");
       }
 
@@ -358,48 +359,53 @@ export const updateUserOcrQuotaService = async (params, body, user_id) => {
       newAllowed = previousAllowed + addValue;
 
       if (rowExists) {
+        let  incRemaining = existingRows[0].attempts_allowed + addValue
+        let remainingAttempts = incRemaining - existingRows[0].attempts_used
         await client.query(
           `UPDATE ocr_user_quota
               SET attempts_allowed = $2,
                   refreshed_attempts = 0,
+                  remaining_attempt =  $3,
+                  custom_plan = COALESCE($4, ocr_user_quota.custom_plan),
+                  custom_color = COALESCE($5,ocr_user_quota.custom_color),
                   updated_at = NOW()
             WHERE user_id = $1`,
-          [userId, newAllowed]
+          [userId, newAllowed,remainingAttempts,custom_plan,custom_color]
         );
       } else {
         await client.query(
-          `INSERT INTO ocr_user_quota (user_id, attempts_used, attempts_allowed, refreshed_attempts)
-           VALUES ($1, 0, $2, 0)`,
+          `INSERT INTO ocr_user_quota (user_id, attempts_used, attempts_allowed, refreshed_attempts,remaining_attempt)
+           VALUES ($1, 0, $2, 0,$2)`,
           [userId, newAllowed]
         );
       }
       attemptsAdded = addValue;
     } else {
-      const setValue = parseInt(setAllowed);
-      if (!Number.isFinite(setValue) || setValue < 0) {
-        throw Boom.badRequest("setAllowed must be a non-negative number");
-      }
+      // const setValue = parseInt(setAllowed);
+      // if (!Number.isFinite(setValue) || setValue < 0) {
+      //   throw Boom.badRequest("setAllowed must be a non-negative number");
+      // }
 
-      newAllowed = setValue;
-      if (rowExists) {
-        await client.query(
-          `UPDATE ocr_user_quota
-              SET attempts_allowed = $2,
-                  refreshed_attempts = 0,
-                  updated_at = NOW()
-            WHERE user_id = $1`,
-          [userId, newAllowed]
-        );
-      } else {
-        await client.query(
-          `INSERT INTO ocr_user_quota (user_id, attempts_used, attempts_allowed, refreshed_attempts)
-           VALUES ($1, 0, $2, 0)`,
-          [userId, newAllowed]
-        );
-      }
-      // setAllowed only counts as an "addition" worth logging if it actually
-      // raised the ceiling; lowering or leaving it unchanged is not.
-      attemptsAdded = newAllowed - previousAllowed;
+      // newAllowed = setValue;
+      // if (rowExists) {
+      //   await client.query(
+      //     `UPDATE ocr_user_quota
+      //         SET attempts_allowed = $2,
+      //             refreshed_attempts = 0,
+      //             updated_at = NOW()
+      //       WHERE user_id = $1`,
+      //     [userId, newAllowed]
+      //   );
+      // } else {
+      //   await client.query(
+      //     `INSERT INTO ocr_user_quota (user_id, attempts_used, attempts_allowed, refreshed_attempts)
+      //      VALUES ($1, 0, $2, 0)`,
+      //     [userId, newAllowed]
+      //   );
+      // }
+      // // setAllowed only counts as an "addition" worth logging if it actually
+      // // raised the ceiling; lowering or leaving it unchanged is not.
+      // attemptsAdded = newAllowed - previousAllowed;
     }
 
     if (attemptsAdded > 0) {

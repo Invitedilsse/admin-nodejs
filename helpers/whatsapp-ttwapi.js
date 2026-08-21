@@ -2,13 +2,20 @@ import axios from "axios";
 
 ;
 
-const API_BASE_URL = process.env.TTWAPI_API_URL || "https://app.ttwapi.com/api";
+// const API_BASE_URL = process.env.TTWAPI_API_URL || "https://app.ttwapi.com/api";
+// const VENDOR_UID =
+//   process.env.TTWAPI_VENDOR_UID || "d509554b-f59e-45b0-b957-e9a86ab4ce9f";
+// const WHATSAPP_TOKEN =
+//   process.env.TTWAPI_TOKEN || 
+//   "DuDmYQSb6WY46ncHbc81G5D5e8vfIpPdQMHNk8GzlvkYsxMXofwk7mYw2R4X9RcJ";
+  // "tlG26Z8mxHl2O0HuQRCNkwEiOcFXbJVcrCM4J4WoroCvBo9OLCqsYMggAb7vqiIo";
+
+    const API_BASE_URL = process.env.TTWAPI_API_URL || "https://chatwise.in/api";
 const VENDOR_UID =
-  process.env.TTWAPI_VENDOR_UID || "d509554b-f59e-45b0-b957-e9a86ab4ce9f";
+  process.env.TTWAPI_VENDOR_UID || "feebf47c-1961-409b-b424-2e5112ef767d";
 const WHATSAPP_TOKEN =
   process.env.TTWAPI_TOKEN || 
-  "DuDmYQSb6WY46ncHbc81G5D5e8vfIpPdQMHNk8GzlvkYsxMXofwk7mYw2R4X9RcJ";
-  // "tlG26Z8mxHl2O0HuQRCNkwEiOcFXbJVcrCM4J4WoroCvBo9OLCqsYMggAb7vqiIo";
+  "c1eW4UJd3sT41LD0CbuNfk4R9Mx2j9l8pEaXosm26SNGAGKX3F9AsJJ1IlJKTgjr";
 
 export const  sendWhatsappNotificationttwapi = async ({
   type = "template",
